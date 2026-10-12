@@ -8,6 +8,7 @@ import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.ErrorResponse;
+import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
@@ -31,6 +32,12 @@ public class ApiExceptionHandler {
     @ExceptionHandler(HttpMessageNotReadableException.class)
     ResponseEntity<ApiError> handle(HttpMessageNotReadableException e) {
         return error(HttpStatus.BAD_REQUEST, INVALID_REQUEST, "invalid_body", "Request body is missing or not valid JSON");
+    }
+
+    @ExceptionHandler(MissingRequestHeaderException.class)
+    ResponseEntity<ApiError> handle(MissingRequestHeaderException e) {
+        return error(HttpStatus.BAD_REQUEST, INVALID_REQUEST, "missing_header",
+                "The " + e.getHeaderName() + " header is required");
     }
 
     @ExceptionHandler(Exception.class)

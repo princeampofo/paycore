@@ -20,7 +20,8 @@ POST /v1/transfers               wallet → wallet
 GET  /v1/wallets/{id}/balance
 ```
 
-Amounts are integers in minor units (`2500` = 25.00 AED). Errors share one shape:
+Amounts are integers in minor units (`2500` = 25.00 AED). Every `POST` requires an
+`Idempotency-Key` header (see below). Errors share one shape:
 
 ```json
 {"type": "invalid_request_error", "code": "insufficient_funds", "message": "Wallet 4 has insufficient funds"}
@@ -51,11 +52,28 @@ that sum to zero. Money only ever moves; it is never created or destroyed.
 ascending account id order, so concurrent transfers can't spend the same money twice and two
 opposite transfers can't deadlock.
 
+## Idempotency
+
+Every `POST` takes an `Idempotency-Key` header, so clients can retry safely after a timeout.
+
+- **New key:** it's claimed by inserting it as `in_progress`. The primary key makes concurrent
+  duplicates safe, because only one insert can win. The work runs, and the response is saved as
+  `completed` in the same transaction as the ledger postings.
+- **Same key, same request:** the saved response is replayed byte for byte, with no new side effects.
+- **Same key, different request** (compared by a SHA-256 of endpoint and body): `422 idempotency_key_reused`.
+- **Same key while the first request is still running:** `409 request_in_progress`, retry later.
+- **Failed request:** the transaction rolled back and nothing happened, so the key is released and
+  a retry runs fresh.
+- Keys expire after 24 hours.
+
 ## Tests
 
 - `ConcurrentTransfersTest`: 1,000 concurrent transfers out of one wallet holding enough for 500.
   Exactly 500 succeed, the balance ends at exactly zero, and the ledger stays balanced. Also 1,000
   opposing transfers between two wallets with no deadlock.
+- `DuplicateRequestsTest`: 50 concurrent HTTP requests with the same idempotency key. Exactly one
+  transfer happens, and every client gets an identical response.
+- `IdempotencyTest`: replay, key reuse, in-progress conflicts, release on failure, expiry, missing header.
 - `LedgerPropertyTest` (jqwik): random sequences of transfers, with every invariant and every balance
   checked against an in-memory model after each step.
 - `LedgerTest`: overdrafts write nothing, history can't be edited, the database refuses negative

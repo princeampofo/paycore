@@ -13,6 +13,8 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 
+import java.util.UUID;
+
 import static com.paycore.TestWallets.fundedWallet;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -96,13 +98,15 @@ class TransferApiTest {
     @Test
     void missingFieldsAreRejected() throws Exception {
         mvc.perform(post("/v1/transfers").contentType(MediaType.APPLICATION_JSON)
+                        .header("Idempotency-Key", UUID.randomUUID().toString())
                         .content("{\"from_wallet_id\": 1, \"to_wallet_id\": 2, \"currency\": \"AED\"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("invalid_body"));
     }
 
     private ResultActions transfer(long from, long to, long amount) throws Exception {
-        return mvc.perform(post("/v1/transfers").contentType(MediaType.APPLICATION_JSON).content("""
+        return mvc.perform(post("/v1/transfers").contentType(MediaType.APPLICATION_JSON)
+                .header("Idempotency-Key", UUID.randomUUID().toString()).content("""
                 {"from_wallet_id": %d, "to_wallet_id": %d, "amount": %d, "currency": "AED"}
                 """.formatted(from, to, amount)));
     }
