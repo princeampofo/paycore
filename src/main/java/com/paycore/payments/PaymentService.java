@@ -7,6 +7,7 @@ import com.paycore.ledger.JournalEntry;
 import com.paycore.ledger.Ledger;
 import com.paycore.ledger.Money;
 import com.paycore.ledger.Posting;
+import com.paycore.outbox.Outbox;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -26,7 +27,7 @@ import java.util.regex.Pattern;
  *   refund:     merchant wallet + fee_revenue → external_funding (back to the card)
  *   cancel:     holds → external_funding                        (the hold is released)
  *
- * Every state change and its ledger entry are written in one transaction.
+ * Every state change, its ledger entry and its webhook event are written in one transaction.
  */
 @Service
 public class PaymentService {
@@ -40,13 +41,15 @@ public class PaymentService {
     private final PaymentRepository payments;
     private final Ledger ledger;
     private final ProcessorClient processor;
+    private final Outbox outbox;
     private final TransactionTemplate transaction;
 
-    public PaymentService(PaymentRepository payments, Ledger ledger, ProcessorClient processor,
+    public PaymentService(PaymentRepository payments, Ledger ledger, ProcessorClient processor, Outbox outbox,
                           PlatformTransactionManager transactionManager) {
         this.payments = payments;
         this.ledger = ledger;
         this.processor = processor;
+        this.outbox = outbox;
         this.transaction = new TransactionTemplate(transactionManager);
     }
 
@@ -157,6 +160,9 @@ public class PaymentService {
     /**
      * Checks the move against the state machine, then writes it with the version we read. If another
      * request changed the payment first (e.g. a second capture), the update matches no row and we refuse.
+     *
+     * Also queues the merchant's webhook, e.g. "payment.captured", in the same transaction.
+     * 'unknown' is our own problem to resolve, so merchants aren't told about it.
      */
     private Payment moveTo(Payment payment, PaymentStatus next, Money fee) {
         payment.status().requireCanMoveTo(next);
@@ -164,7 +170,11 @@ public class PaymentService {
             throw new ApiException(HttpStatus.CONFLICT, "concurrent_update",
                     "Payment " + payment.id() + " was changed by another request; fetch it and retry");
         }
-        return payment.moved(next, fee);
+        Payment moved = payment.moved(next, fee);
+        if (next != PaymentStatus.UNKNOWN) {
+            outbox.enqueue(payment.merchantWalletId(), "payment." + next.apiName(), PaymentResponse.of(moved));
+        }
+        return moved;
     }
 
     private Payment find(long paymentId) {

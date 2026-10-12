@@ -23,3 +23,12 @@ paycore:
     # Wait this long before asking, so a charge still on its way to the processor
     # isn't reported as "never received".
     min-age: 30s
+  webhooks:
+    # How often the dispatcher looks for events to send.
+    interval-ms: 1000
+    timeout: 5s
+    # Retries wait base-delay × 2^(attempt − 1): 2 s, 4 s, 8 s ... After max-attempts the event is "dead".
+    max-attempts: 8
+    base-delay: 2s
+    # A claimed event isn't picked up again for this long, so it's only resent if we crash mid-send.
+    lease: 60s
