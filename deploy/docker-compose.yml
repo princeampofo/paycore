@@ -1,0 +1,10 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: paycore
+      POSTGRES_USER: paycore
+      POSTGRES_PASSWORD: paycore
+    ports:
+      # 5433 on the host, so it never clashes with a locally installed Postgres on 5432.
+      - "5433:5432"

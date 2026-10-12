@@ -1,0 +1,8 @@
+target/
+.idea/
+*.iml
+.DS_Store
+
+SPEC.md
+.jqwik-database
+learning.md

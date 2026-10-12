@@ -1,0 +1,13 @@
+spring:
+  application:
+    name: paycore
+  datasource:
+    url: jdbc:postgresql://localhost:5433/paycore
+    username: paycore
+    password: paycore
+  jackson:
+    property-naming-strategy: SNAKE_CASE
+    deserialization:
+      # A missing "amount" must be an error, not silently 0.
+      fail-on-missing-creator-properties: true
+      fail-on-null-for-primitives: true
