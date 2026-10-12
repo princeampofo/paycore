@@ -35,6 +35,9 @@ public class TestcontainersConfiguration {
         return registry -> {
             registry.add("paycore.processor.base-url", () -> "http://localhost:" + processor.port());
             registry.add("paycore.processor.timeout", () -> "1s");
+            // Tests run the status check themselves, so the schedule never fires on its own.
+            registry.add("paycore.status-check.interval-ms", () -> "3600000");
+            registry.add("paycore.status-check.min-age", () -> "0s");
         };
     }
 }

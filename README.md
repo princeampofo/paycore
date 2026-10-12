@@ -38,8 +38,10 @@ Amounts are integers in minor units (`2500` = 25.00 AED). Errors look like
   also prevents deadlocks. A `CHECK` constraint backs up the application check.
 - **Payments follow a state machine:** `created → authorized → captured → refunded` (or `canceled`,
   `failed`, `unknown`). Illegal moves return `409`, and a version column stops concurrent captures.
-  The processor is never called inside a database transaction. A processor timeout makes the payment
-  `unknown`, never `failed`.
+  The processor is never called inside a database transaction.
+- **Timeouts never double-charge:** a payment whose processor call times out becomes `unknown`. A
+  background job then asks the processor about that exact charge (by a reference we chose) and records
+  the real outcome once. It never re-sends the charge.
 - **Safe retries:** the same `Idempotency-Key` replays the saved response without moving money again.
   The key's primary key makes concurrent duplicates safe. Reusing a key for a different request
   returns `422`, and retrying while the first is still running returns `409`.
@@ -48,7 +50,9 @@ Amounts are integers in minor units (`2500` = 25.00 AED). Errors look like
 
 - `ConcurrentTransfersTest`: 1,000 concurrent transfers from one wallet never overdraw or deadlock.
 - `DuplicateRequestsTest`: 50 concurrent requests with one idempotency key charge exactly once.
-- `PaymentLifecycleTest`: authorize, capture, refund, cancel, declines, timeouts, illegal transitions.
+- `ProcessorTimeoutTest`: the processor charges but times out. The payment goes `unknown`, resolves to
+  `authorized`, and the customer is charged exactly once.
+- `PaymentLifecycleTest`: authorize, capture, refund, cancel, declines, illegal transitions.
 - `LedgerPropertyTest`: random sequences of transfers, payments, captures, refunds and cancels keep
   every invariant after every step.
 - Plus unit and integration tests for `Money`, journal entries, the state machine, the ledger, the API

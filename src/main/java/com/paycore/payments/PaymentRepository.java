@@ -5,6 +5,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
 
+import java.time.Duration;
+import java.util.List;
 import java.util.Optional;
 
 @Repository
@@ -36,6 +38,21 @@ public class PaymentRepository {
 
     public Optional<Payment> find(long id) {
         return jdbc.query("SELECT * FROM payments WHERE id = ?", PAYMENT, id).stream().findFirst();
+    }
+
+    /**
+     * Payments whose outcome we don't know: 'unknown' ones (the processor didn't answer) and
+     * 'created' ones (we crashed or failed before recording the answer). Only those untouched for
+     * at least {@code minAge}, so a charge still on its way to the processor isn't asked about yet.
+     */
+    public List<Payment> findUnresolved(Duration minAge, int limit) {
+        return jdbc.query("""
+                SELECT * FROM payments
+                WHERE status IN ('UNKNOWN', 'CREATED')
+                  AND updated_at <= now() - make_interval(secs => ?)
+                ORDER BY id
+                LIMIT ?""",
+                PAYMENT, minAge.toMillis() / 1000.0, limit);
     }
 
     /**

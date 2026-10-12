@@ -17,3 +17,9 @@ paycore:
     base-url: http://localhost:8081
     # How long we wait for a charge before calling the payment "unknown".
     timeout: 2s
+  status-check:
+    # How often to ask the processor about payments whose outcome we don't know.
+    interval-ms: 5000
+    # Wait this long before asking, so a charge still on its way to the processor
+    # isn't reported as "never received".
+    min-age: 30s

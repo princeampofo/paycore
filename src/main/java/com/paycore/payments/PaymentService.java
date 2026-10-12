@@ -77,13 +77,16 @@ public class PaymentService {
         return new ChargeAttempt(payment, processor.charge(payment.processorRef(), amount, token));
     }
 
-    /** Step 2 of creating a payment: record the processor's answer and its ledger entry, in one transaction. */
+    /**
+     * Step 2 of creating a payment: record the processor's answer and its ledger entry, in one
+     * transaction. Also used by {@link PaymentStatusChecker} once it finds out what happened.
+     */
     public PaymentResponse recordCharge(ChargeAttempt attempt) {
         return transaction.execute(tx -> {
             Payment payment = attempt.payment();
             Payment updated = switch (attempt.result()) {
-                case APPROVED -> authorize(payment);
-                case DECLINED -> moveTo(payment, PaymentStatus.FAILED, payment.fee());
+                case CHARGED -> authorize(payment);
+                case NOT_CHARGED -> moveTo(payment, PaymentStatus.FAILED, payment.fee());
                 case UNKNOWN -> moveTo(payment, PaymentStatus.UNKNOWN, payment.fee());
             };
             return PaymentResponse.of(updated);

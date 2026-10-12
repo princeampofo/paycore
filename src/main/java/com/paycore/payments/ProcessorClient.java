@@ -6,6 +6,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
@@ -16,7 +17,8 @@ import java.time.Duration;
 @Component
 public class ProcessorClient {
 
-    public enum ChargeResult { APPROVED, DECLINED, UNKNOWN }
+    /** What we know about a charge: the card was charged, it wasn't, or we can't tell. */
+    public enum ChargeResult { CHARGED, NOT_CHARGED, UNKNOWN }
 
     record ChargeRequest(String ref, long amount, String currency, String cardToken) {
     }
@@ -50,14 +52,31 @@ public class ProcessorClient {
                     .body(new ChargeRequest(ref, amount.amount(), amount.currency(), cardToken))
                     .retrieve()
                     .body(ChargeResponse.class);
-            return switch (response == null ? "" : response.status()) {
-                case "approved" -> ChargeResult.APPROVED;
-                case "declined" -> ChargeResult.DECLINED;
-                default -> ChargeResult.UNKNOWN;
-            };
+            return resultOf(response);
         } catch (RestClientException e) {
             log.warn("No clear answer from the processor for charge {}: {}", ref, e.getMessage());
             return ChargeResult.UNKNOWN;
         }
+    }
+
+    /** Asks what happened to an earlier charge. Never charges anything. */
+    public ChargeResult chargeStatus(String ref) {
+        try {
+            return resultOf(rest.get().uri("/charges/{ref}", ref).retrieve().body(ChargeResponse.class));
+        } catch (HttpClientErrorException.NotFound e) {
+            // The processor never received this charge, so the card wasn't charged.
+            return ChargeResult.NOT_CHARGED;
+        } catch (RestClientException e) {
+            log.warn("Could not get the status of charge {}: {}", ref, e.getMessage());
+            return ChargeResult.UNKNOWN;
+        }
+    }
+
+    private static ChargeResult resultOf(ChargeResponse response) {
+        return switch (response == null ? "" : response.status()) {
+            case "approved" -> ChargeResult.CHARGED;
+            case "declined" -> ChargeResult.NOT_CHARGED;
+            default -> ChargeResult.UNKNOWN;
+        };
     }
 }

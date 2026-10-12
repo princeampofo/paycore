@@ -12,6 +12,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -36,6 +37,7 @@ public class MockProcessor {
     private static final Pattern JSON_FIELD = Pattern.compile("\"(\\w+)\"\\s*:\\s*(?:\"([^\"]*)\"|(-?\\d+))");
 
     private final Map<String, String> chargeStatusByRef = new ConcurrentHashMap<>();
+    private final AtomicInteger approvedCharges = new AtomicInteger();
     private volatile long latencyMs;
     private volatile double declineRate;
     private volatile double timeoutRate;
@@ -68,6 +70,11 @@ public class MockProcessor {
 
     public void stop() {
         server.stop(0);
+    }
+
+    /** How many cards this processor has actually charged, ever. */
+    public int approvedCharges() {
+        return approvedCharges.get();
     }
 
     public int port() {
@@ -117,9 +124,13 @@ public class MockProcessor {
 
         Thread.sleep(latencyMs);
         ThreadLocalRandom random = ThreadLocalRandom.current();
-        String status = chargeStatusByRef.computeIfAbsent(ref, r ->
-                "tok_declined".equals(body.get("card_token")) || random.nextDouble() < declineRate
-                        ? "declined" : "approved");
+        String status = chargeStatusByRef.computeIfAbsent(ref, r -> {
+            boolean declined = "tok_declined".equals(body.get("card_token")) || random.nextDouble() < declineRate;
+            if (!declined) {
+                approvedCharges.incrementAndGet();
+            }
+            return declined ? "declined" : "approved";
+        });
 
         if (random.nextDouble() < timeoutRate) {
             // The charge is recorded above, but the caller gives up long before this answer arrives.
