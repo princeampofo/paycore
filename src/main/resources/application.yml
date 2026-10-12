@@ -32,3 +32,17 @@ paycore:
     base-delay: 2s
     # A claimed event isn't picked up again for this long, so it's only resent if we crash mid-send.
     lease: 60s
+  metrics:
+    # How often the database-backed gauges (unknown payments, outbox lag, ledger health) are recomputed.
+    refresh-interval-ms: 10000
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, prometheus
+  metrics:
+    distribution:
+      # Lets Prometheus compute latency percentiles (p50, p99) from a histogram.
+      percentiles-histogram:
+        http.server.requests: true

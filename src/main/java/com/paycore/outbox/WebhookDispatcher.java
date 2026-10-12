@@ -53,7 +53,11 @@ public class WebhookDispatcher {
 
     @Scheduled(fixedDelayString = "${paycore.webhooks.interval-ms}", initialDelayString = "${paycore.webhooks.interval-ms}")
     void runOnSchedule() {
-        dispatchDue();
+        // Keep going while batches come back full, so a backlog drains at full speed rather than
+        // one batch per tick. It stops at the first short batch (nothing left, or some sends failed).
+        while (dispatchDue() == BATCH_SIZE) {
+            log.debug("Outbox backlog: sending the next batch");
+        }
     }
 
     /** Sends one batch of due events. Returns how many were delivered. */

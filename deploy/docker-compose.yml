@@ -8,6 +8,10 @@ services:
     ports:
       # 5433 on the host, so it never clashes with a locally installed Postgres on 5432.
       - "5433:5432"
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "paycore"]
+      interval: 2s
+      retries: 15
 
   # Runs straight from source; it has no dependencies.
   mock-processor:
@@ -21,3 +25,49 @@ services:
       TIMEOUT_RATE: 0.05
     ports:
       - "8081:8081"
+
+  # Build the jar first: ./mvnw package -DskipTests
+  app:
+    build: ..
+    profiles: ["full"]
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/paycore
+      PAYCORE_PROCESSOR_BASE_URL: http://mock-processor:8081
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mock-processor:
+        condition: service_started
+
+  # A merchant webhook endpoint for the load test; answers 200 to everything.
+  webhook-sink:
+    image: eclipse-temurin:21-jdk
+    profiles: ["full"]
+    volumes:
+      - ../loadtest:/loadtest:ro
+    command: java /loadtest/WebhookSink.java
+    ports:
+      - "9000:9000"
+
+  prometheus:
+    image: prom/prometheus:v3.1.0
+    profiles: ["full"]
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+
+  grafana:
+    image: grafana/grafana:11.4.0
+    profiles: ["full"]
+    environment:
+      # Local demo only: anyone can view dashboards without logging in.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000"

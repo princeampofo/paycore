@@ -7,6 +7,7 @@ import com.paycore.ledger.JournalEntry;
 import com.paycore.ledger.Ledger;
 import com.paycore.ledger.Money;
 import com.paycore.ledger.Posting;
+import com.paycore.metrics.PaycoreMetrics;
 import com.paycore.outbox.Outbox;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -42,14 +43,16 @@ public class PaymentService {
     private final Ledger ledger;
     private final ProcessorClient processor;
     private final Outbox outbox;
+    private final PaycoreMetrics metrics;
     private final TransactionTemplate transaction;
 
     public PaymentService(PaymentRepository payments, Ledger ledger, ProcessorClient processor, Outbox outbox,
-                          PlatformTransactionManager transactionManager) {
+                          PaycoreMetrics metrics, PlatformTransactionManager transactionManager) {
         this.payments = payments;
         this.ledger = ledger;
         this.processor = processor;
         this.outbox = outbox;
+        this.metrics = metrics;
         this.transaction = new TransactionTemplate(transactionManager);
     }
 
@@ -171,6 +174,7 @@ public class PaymentService {
                     "Payment " + payment.id() + " was changed by another request; fetch it and retry");
         }
         Payment moved = payment.moved(next, fee);
+        metrics.paymentMovedTo(next.apiName());
         if (next != PaymentStatus.UNKNOWN) {
             outbox.enqueue(payment.merchantWalletId(), "payment." + next.apiName(), PaymentResponse.of(moved));
         }

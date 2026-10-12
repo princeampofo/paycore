@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.paycore.api.ApiException;
 import com.paycore.ledger.InsufficientFundsException;
+import com.paycore.metrics.PaycoreMetrics;
 import com.paycore.payments.IllegalTransitionException;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -34,11 +35,14 @@ public class IdempotencyService {
     private final JdbcTemplate jdbc;
     private final TransactionTemplate transaction;
     private final ObjectMapper json;
+    private final PaycoreMetrics metrics;
 
-    public IdempotencyService(JdbcTemplate jdbc, TransactionTemplate transaction, ObjectMapper json) {
+    public IdempotencyService(JdbcTemplate jdbc, TransactionTemplate transaction, ObjectMapper json,
+                              PaycoreMetrics metrics) {
         this.jdbc = jdbc;
         this.transaction = transaction;
         this.json = json;
+        this.metrics = metrics;
     }
 
     /**
@@ -136,6 +140,7 @@ public class IdempotencyService {
         if (row.status().equals("in_progress")) {
             throw inProgress();
         }
+        metrics.idempotentReplay();
         return new SavedResponse(row.responseStatus(), row.responseBody());
     }
 

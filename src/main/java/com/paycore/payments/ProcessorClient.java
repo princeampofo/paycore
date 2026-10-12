@@ -1,6 +1,7 @@
 package com.paycore.payments;
 
 import com.paycore.ledger.Money;
+import com.paycore.metrics.PaycoreMetrics;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -29,14 +30,16 @@ public class ProcessorClient {
     private static final Logger log = LoggerFactory.getLogger(ProcessorClient.class);
 
     private final RestClient rest;
+    private final PaycoreMetrics metrics;
 
-    public ProcessorClient(RestClient.Builder builder,
+    public ProcessorClient(RestClient.Builder builder, PaycoreMetrics metrics,
                            @Value("${paycore.processor.base-url}") String baseUrl,
                            @Value("${paycore.processor.timeout}") Duration timeout) {
         JdkClientHttpRequestFactory requestFactory =
                 new JdkClientHttpRequestFactory(HttpClient.newBuilder().connectTimeout(timeout).build());
         requestFactory.setReadTimeout(timeout);
         this.rest = builder.baseUrl(baseUrl).requestFactory(requestFactory).build();
+        this.metrics = metrics;
     }
 
     /**
@@ -47,6 +50,10 @@ public class ProcessorClient {
      * twice. So it's reported as UNKNOWN, to be resolved later by asking about {@code ref}.
      */
     public ChargeResult charge(String ref, Money amount, String cardToken) {
+        return counted("charge", requestCharge(ref, amount, cardToken));
+    }
+
+    private ChargeResult requestCharge(String ref, Money amount, String cardToken) {
         try {
             ChargeResponse response = rest.post().uri("/charges")
                     .body(new ChargeRequest(ref, amount.amount(), amount.currency(), cardToken))
@@ -61,6 +68,10 @@ public class ProcessorClient {
 
     /** Asks what happened to an earlier charge. Never charges anything. */
     public ChargeResult chargeStatus(String ref) {
+        return counted("status", requestStatus(ref));
+    }
+
+    private ChargeResult requestStatus(String ref) {
         try {
             return resultOf(rest.get().uri("/charges/{ref}", ref).retrieve().body(ChargeResponse.class));
         } catch (HttpClientErrorException.NotFound e) {
@@ -70,6 +81,11 @@ public class ProcessorClient {
             log.warn("Could not get the status of charge {}: {}", ref, e.getMessage());
             return ChargeResult.UNKNOWN;
         }
+    }
+
+    private ChargeResult counted(String type, ChargeResult result) {
+        metrics.processorRequest(type, result.name().toLowerCase());
+        return result;
     }
 
     private static ChargeResult resultOf(ChargeResponse response) {

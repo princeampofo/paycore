@@ -35,13 +35,15 @@ public class TestcontainersConfiguration {
         return registry -> {
             registry.add("paycore.processor.base-url", () -> "http://localhost:" + processor.port());
             registry.add("paycore.processor.timeout", () -> "1s");
-            // Tests run the status check and the webhook dispatcher themselves, so neither schedule fires on its own.
+            // Tests run the scheduled jobs (status check, webhook dispatcher, metrics refresh) themselves,
+            // so none of them fires on its own.
             registry.add("paycore.status-check.interval-ms", () -> "3600000");
             registry.add("paycore.status-check.min-age", () -> "0s");
             registry.add("paycore.webhooks.interval-ms", () -> "3600000");
             registry.add("paycore.webhooks.timeout", () -> "2s");
             registry.add("paycore.webhooks.max-attempts", () -> "5");
             registry.add("paycore.webhooks.base-delay", () -> "0s"); // retries are due at once
+            registry.add("paycore.metrics.refresh-interval-ms", () -> "3600000");
         };
     }
 }
