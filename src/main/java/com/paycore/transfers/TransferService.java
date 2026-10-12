@@ -34,6 +34,9 @@ public class TransferService {
         if (!isCurrencyCode(request.currency())) {
             throw ApiException.badRequest("invalid_currency", "currency must be an ISO 4217 code such as AED");
         }
+        if (request.note() != null && request.note().length() > 140) {
+            throw ApiException.badRequest("invalid_note", "note must be at most 140 characters");
+        }
         if (request.fromWalletId() == request.toWalletId()) {
             throw ApiException.badRequest("same_wallet", "Cannot transfer from a wallet to itself");
         }
@@ -46,9 +49,9 @@ public class TransferService {
         Money amount = Money.of(request.amount(), request.currency());
         long entryId = ledger.post(JournalEntry.of("transfer",
                 new Posting(from.id(), amount.negate()),
-                new Posting(to.id(), amount)));
+                new Posting(to.id(), amount)).withNote(request.note()));
 
-        return new TransferResponse(entryId, from.id(), to.id(), amount.amount(), amount.currency());
+        return new TransferResponse(entryId, from.id(), to.id(), amount.amount(), amount.currency(), request.note());
     }
 
     // System accounts (holds, fee_revenue, external_funding) share the id space with wallets.

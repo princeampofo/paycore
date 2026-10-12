@@ -5,6 +5,9 @@ import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.TreeMap;
@@ -59,6 +62,34 @@ public class Ledger {
                 (rs, row) -> Money.of(rs.getLong("balance"), rs.getString("currency")), accountId);
     }
 
+    /**
+     * A wallet's history, newest first: up to {@code limit} journal entries that touched it, older
+     * than entry {@code beforeId} (pass Long.MAX_VALUE for the newest). Each comes with all of its
+     * postings, so the caller can see who was on the other side.
+     */
+    public List<WalletEntry> entriesFor(long walletId, long beforeId, int limit) {
+        Map<Long, WalletEntry> entries = new LinkedHashMap<>();
+        jdbc.query("""
+                SELECT e.id, e.description, e.note, e.created_at, p.account_id, p.amount
+                FROM journal_entries e JOIN postings p ON p.entry_id = e.id
+                WHERE e.id IN (SELECT entry_id FROM postings
+                               WHERE account_id = ? AND entry_id < ?
+                               ORDER BY entry_id DESC LIMIT ?)
+                ORDER BY e.id DESC, p.id""",
+                rs -> {
+                    long entryId = rs.getLong("id");
+                    WalletEntry entry = entries.get(entryId);
+                    if (entry == null) {
+                        entry = new WalletEntry(entryId, rs.getString("description"), rs.getString("note"),
+                                rs.getTimestamp("created_at").toInstant(), 0, new ArrayList<>());
+                        entries.put(entryId, entry);
+                    }
+                    entry.postings().add(new WalletEntry.Line(rs.getLong("account_id"), rs.getLong("amount")));
+                },
+                walletId, beforeId, limit);
+        return entries.values().stream().map(entry -> entry.forWallet(walletId)).toList();
+    }
+
     /** Posts the entry and returns its journal entry id. */
     @Transactional
     public long post(JournalEntry entry) {
@@ -78,7 +109,8 @@ public class Ledger {
         });
 
         long entryId = jdbc.queryForObject(
-                "INSERT INTO journal_entries (description) VALUES (?) RETURNING id", Long.class, entry.description());
+                "INSERT INTO journal_entries (description, note) VALUES (?, ?) RETURNING id",
+                Long.class, entry.description(), entry.note());
         for (Posting posting : entry.postings()) {
             jdbc.update("INSERT INTO postings (entry_id, account_id, amount) VALUES (?, ?, ?)",
                     entryId, posting.accountId(), posting.amount().amount());

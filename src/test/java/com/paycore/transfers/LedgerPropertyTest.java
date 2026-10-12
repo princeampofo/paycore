@@ -52,8 +52,8 @@ class LedgerPropertyTest {
     record Transfer(int from, int to, long amount) implements Step {
     }
 
-    /** A card payment to wallet {@code merchant}. */
-    record Pay(int merchant, long amount, boolean declined) implements Step {
+    /** A card payment to wallet {@code merchant}, captured straight away or held for a later capture. */
+    record Pay(int merchant, long amount, boolean declined, boolean automaticCapture) implements Step {
     }
 
     /** Capture, refund or cancel payment number {@code payment} (modulo how many exist so far). */
@@ -138,15 +138,21 @@ class LedgerPropertyTest {
 
     private void pay(Pay step) {
         String token = step.declined() ? "tok_declined" : "tok_visa";
-        PaymentResponse response = paymentService.createPayment(
-                new CreatePaymentRequest(wallets.get(step.merchant()), step.amount(), "AED", token));
-        String expected = step.declined() ? "failed" : "authorized";
-        assertThat(response.status()).isEqualTo(expected);
-        payments.add(new ModelPayment(response.id(), step.merchant(), step.amount(), expected));
-        if (!step.declined()) {
+        String captureMethod = step.automaticCapture() ? "automatic" : "manual";
+        PaymentResponse response = paymentService.createPayment(new CreatePaymentRequest(
+                wallets.get(step.merchant()), step.amount(), "AED", token, null, captureMethod));
+
+        ModelPayment payment = new ModelPayment(response.id(), step.merchant(), step.amount(), "failed");
+        if (!step.declined() && step.automaticCapture()) {
+            payment.status = "captured"; // the money passes through holds and straight on to the merchant
+            add(step.merchant(), payment.netToMerchant());
+        } else if (!step.declined()) {
+            payment.status = "authorized";
             holds += step.amount();
         }
-        Statistics.collect("pay: " + expected);
+        assertThat(response.status()).isEqualTo(payment.status);
+        payments.add(payment);
+        Statistics.collect("pay (" + captureMethod + "): " + payment.status);
     }
 
     private void act(Act step) {
@@ -218,8 +224,8 @@ class LedgerPropertyTest {
         Arbitrary<Step> transfer = Combinators.combine(wallet, wallet, amount)
                 .filter((from, to, a) -> !from.equals(to))
                 .as(Transfer::new);
-        Arbitrary<Step> pay = Combinators.combine(wallet, amount, Arbitraries.integers().between(1, 10))
-                .as((merchant, a, roll) -> new Pay(merchant, a, roll == 1)); // 1 in 10 cards is declined
+        Arbitrary<Step> pay = Combinators.combine(wallet, amount, Arbitraries.integers().between(1, 10), Arbitraries.of(true, false))
+                .as((merchant, a, roll, automatic) -> new Pay(merchant, a, roll == 1, automatic)); // 1 in 10 cards is declined
         Arbitrary<Step> act = Combinators.combine(
                         Arbitraries.frequency(Tuple.of(3, "capture"), Tuple.of(2, "refund"), Tuple.of(1, "cancel")),
                         Arbitraries.integers().between(0, 9))

@@ -76,6 +76,50 @@ class PaymentLifecycleTest {
     }
 
     @Test
+    void byDefaultPaymentsAreCapturedStraightAway() throws Exception {
+        long cafe = fundedWallet(ledger, "corner-cafe", 0);
+        long holdsBefore = balance(AccountType.HOLDS);
+
+        pay(cafe, 10_000, "tok_visa", "") // no capture_method: automatic, like most shops
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.status").value("captured"))
+                .andExpect(jsonPath("$.capture_method").value("automatic"))
+                .andExpect(jsonPath("$.fee").value(290));
+
+        assertThat(ledger.balance(cafe).amount()).isEqualTo(9_710);
+        assertThat(balance(AccountType.HOLDS)).isEqualTo(holdsBefore); // in and straight back out
+    }
+
+    @Test
+    void anAutomaticallyCapturedPaymentCanStillBeRefundedButNotCapturedAgain() throws Exception {
+        long cafe = fundedWallet(ledger, "corner-cafe", 0);
+        String body = pay(cafe, 10_000, "tok_visa", ", \"capture_method\": \"automatic\"")
+                .andReturn().getResponse().getContentAsString();
+        long payment = json.readTree(body).get("id").asLong();
+
+        expectInvalidState(act(payment, "capture"), "A payment that is captured cannot become captured");
+        act(payment, "refund").andExpect(status().isOk()).andExpect(jsonPath("$.status").value("refunded"));
+    }
+
+    @Test
+    void aDeclinedAutomaticPaymentIsSimplyFailed() throws Exception {
+        long cafe = fundedWallet(ledger, "corner-cafe", 0);
+
+        pay(cafe, 10_000, "tok_declined", "").andExpect(jsonPath("$.status").value("failed"));
+
+        assertThat(ledger.balance(cafe).amount()).isZero();
+    }
+
+    @Test
+    void unknownCaptureMethodsAreRejected() throws Exception {
+        long cafe = fundedWallet(ledger, "corner-cafe", 0);
+
+        pay(cafe, 10_000, "tok_visa", ", \"capture_method\": \"later\"")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("invalid_capture_method"));
+    }
+
+    @Test
     void captureMovesTheHeldMoneyToTheMerchantMinusTheFee() throws Exception {
         long cafe = fundedWallet(ledger, "corner-cafe", 0);
         long holdsBefore = balance(AccountType.HOLDS);
@@ -231,12 +275,17 @@ class PaymentLifecycleTest {
         return payment.get("id").asLong();
     }
 
+    /** Most tests here are about the manual flow (authorize now, capture later). */
     private ResultActions pay(long merchant, long amount, String cardToken) throws Exception {
+        return pay(merchant, amount, cardToken, ", \"capture_method\": \"manual\"");
+    }
+
+    private ResultActions pay(long merchant, long amount, String cardToken, String extraJson) throws Exception {
         return mvc.perform(post("/v1/payments").contentType(MediaType.APPLICATION_JSON)
                 .header("Idempotency-Key", UUID.randomUUID().toString())
                 .content("""
-                        {"merchant_wallet_id": %d, "amount": %d, "currency": "AED", "card_token": "%s"}
-                        """.formatted(merchant, amount, cardToken)));
+                        {"merchant_wallet_id": %d, "amount": %d, "currency": "AED", "card_token": "%s"%s}
+                        """.formatted(merchant, amount, cardToken, extraJson)));
     }
 
     private ResultActions act(long payment, String action) throws Exception {

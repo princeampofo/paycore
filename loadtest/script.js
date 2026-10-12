@@ -1,4 +1,4 @@
-// Mixed load: 70% wallet transfers, 30% card payments (+ capture), with 5% of transfers retried
+// Mixed load: 70% wallet transfers, 30% card payments (half captured automatically, half held and captured), with 5% of transfers retried
 // with the same Idempotency-Key the way a client does after a timeout. The merchant has a webhook
 // endpoint, so every payment change is also delivered through the outbox. At the end it checks
 // that the ledger is still balanced.
@@ -70,7 +70,9 @@ function transfer() {
 }
 
 function payAndCapture() {
-  const body = { merchant_wallet_id: MERCHANT, amount: 100 + Math.floor(Math.random() * 10000), currency: 'AED', card_token: 'tok_visa' };
+  // Half are captured straight away; the other half are held and captured in a second request.
+  const captureMethod = Math.random() < 0.5 ? 'automatic' : 'manual';
+  const body = { merchant_wallet_id: MERCHANT, amount: 100 + Math.floor(Math.random() * 10000), currency: 'AED', card_token: 'tok_visa', capture_method: captureMethod };
   const key = newKey('p');
 
   const res = post('/v1/payments', body, key, 'payment');

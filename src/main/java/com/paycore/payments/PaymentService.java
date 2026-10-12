@@ -24,7 +24,8 @@ import java.util.regex.Pattern;
  * Card payments to merchants. Money flows through the ledger like this:
  *
  *   authorize:  external_funding → holds                       (the card is charged, we hold the money)
- *   capture:    holds → merchant wallet, minus a fee → fee_revenue
+ *   capture:    holds → merchant wallet, minus a fee → fee_revenue  (straight after authorize when the
+ *                                                                    capture method is automatic)
  *   refund:     merchant wallet + fee_revenue → external_funding (back to the card)
  *   cancel:     holds → external_funding                        (the hold is released)
  *
@@ -79,7 +80,13 @@ public class PaymentService {
             throw ApiException.badRequest("currency_mismatch", "The merchant wallet holds " + merchant.currency());
         }
 
-        Payment payment = payments.insert(merchant.id(), amount, token, "pay_" + UUID.randomUUID());
+        if (request.customer() != null && (request.customer().isBlank() || request.customer().length() > 64)) {
+            throw ApiException.badRequest("invalid_customer", "customer must be 1 to 64 characters");
+        }
+        CaptureMethod captureMethod = validCaptureMethod(request.captureMethod());
+
+        Payment payment = payments.insert(merchant.id(), amount, token, request.customer(), captureMethod,
+                "pay_" + UUID.randomUUID());
         return new ChargeAttempt(payment, processor.charge(payment.processorRef(), amount, token));
     }
 
@@ -91,7 +98,9 @@ public class PaymentService {
         return transaction.execute(tx -> {
             Payment payment = attempt.payment();
             Payment updated = switch (attempt.result()) {
-                case CHARGED -> authorize(payment);
+                case CHARGED -> payment.captureMethod() == CaptureMethod.AUTOMATIC
+                        ? capture(authorize(payment))
+                        : authorize(payment);
                 case NOT_CHARGED -> moveTo(payment, PaymentStatus.FAILED, payment.fee());
                 case UNKNOWN -> moveTo(payment, PaymentStatus.UNKNOWN, payment.fee());
             };
@@ -101,7 +110,11 @@ public class PaymentService {
 
     @Transactional
     public PaymentResponse capture(long paymentId) {
-        Payment payment = find(paymentId);
+        return PaymentResponse.of(capture(find(paymentId)));
+    }
+
+    private Payment capture(Payment payment) {
+        long paymentId = payment.id();
         Money fee = feeFor(payment.amount());
         Payment captured = moveTo(payment, PaymentStatus.CAPTURED, fee);
 
@@ -112,7 +125,7 @@ public class PaymentService {
             postings.add(new Posting(system(AccountType.FEE_REVENUE, payment), fee));
         }
         ledger.post(new JournalEntry("capture payment " + paymentId, postings));
-        return PaymentResponse.of(captured);
+        return captured;
     }
 
     /** Reverses the capture and sends the money back to the card, fee included. */
@@ -145,6 +158,17 @@ public class PaymentService {
 
     public PaymentResponse get(long paymentId) {
         return PaymentResponse.of(find(paymentId));
+    }
+
+    /** A merchant's incoming payments, or a customer's payments, newest first. */
+    public List<PaymentResponse> list(Long merchantWalletId, String customer, int limit) {
+        if ((merchantWalletId == null) == (customer == null)) {
+            throw ApiException.badRequest("invalid_filter", "Filter by exactly one of merchant_wallet_id and customer");
+        }
+        if (limit < 1 || limit > 100) {
+            throw ApiException.badRequest("invalid_limit", "limit must be between 1 and 100");
+        }
+        return payments.list(merchantWalletId, customer, limit).stream().map(PaymentResponse::of).toList();
     }
 
     /** Rounds down, so a fee is never more than 2.90%. */
@@ -199,6 +223,16 @@ public class PaymentService {
         } catch (IllegalArgumentException | NullPointerException e) {
             throw ApiException.badRequest("invalid_currency", "currency must be an ISO 4217 code such as AED");
         }
+    }
+
+    private static CaptureMethod validCaptureMethod(String captureMethod) {
+        if (captureMethod == null || captureMethod.equals("automatic")) {
+            return CaptureMethod.AUTOMATIC;
+        }
+        if (captureMethod.equals("manual")) {
+            return CaptureMethod.MANUAL;
+        }
+        throw ApiException.badRequest("invalid_capture_method", "capture_method must be automatic or manual");
     }
 
     // We only ever accept fake tokens, and refuse anything that could be a real card number,

@@ -20,7 +20,10 @@ public class PaymentRepository {
             PaymentStatus.valueOf(rs.getString("status")),
             rs.getString("processor_ref"),
             Money.of(rs.getLong("fee"), rs.getString("currency")),
-            rs.getLong("version"));
+            rs.getLong("version"),
+            rs.getString("customer"),
+            CaptureMethod.valueOf(rs.getString("capture_method")),
+            rs.getTimestamp("created_at").toInstant());
 
     private final JdbcTemplate jdbc;
 
@@ -28,12 +31,25 @@ public class PaymentRepository {
         this.jdbc = jdbc;
     }
 
-    public Payment insert(long merchantWalletId, Money amount, String cardToken, String processorRef) {
+    public Payment insert(long merchantWalletId, Money amount, String cardToken, String customer,
+                          CaptureMethod captureMethod, String processorRef) {
         return jdbc.queryForObject("""
-                INSERT INTO payments (merchant_wallet_id, amount, currency, card_token, status, processor_ref)
-                VALUES (?, ?, ?, ?, 'CREATED', ?)
+                INSERT INTO payments
+                    (merchant_wallet_id, amount, currency, card_token, customer, capture_method, status, processor_ref)
+                VALUES (?, ?, ?, ?, ?, ?, 'CREATED', ?)
                 RETURNING *""",
-                PAYMENT, merchantWalletId, amount.amount(), amount.currency(), cardToken, processorRef);
+                PAYMENT, merchantWalletId, amount.amount(), amount.currency(), cardToken, customer,
+                captureMethod.name(), processorRef);
+    }
+
+    /** Newest first. Exactly one of {@code merchantWalletId} and {@code customer} is set. */
+    public List<Payment> list(Long merchantWalletId, String customer, int limit) {
+        if (merchantWalletId != null) {
+            return jdbc.query("SELECT * FROM payments WHERE merchant_wallet_id = ? ORDER BY id DESC LIMIT ?",
+                    PAYMENT, merchantWalletId, limit);
+        }
+        return jdbc.query("SELECT * FROM payments WHERE customer = ? ORDER BY id DESC LIMIT ?",
+                PAYMENT, customer, limit);
     }
 
     public Optional<Payment> find(long id) {

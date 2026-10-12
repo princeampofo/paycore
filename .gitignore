@@ -6,3 +6,6 @@ target/
 SPEC.md
 .jqwik-database
 learning.md
+demo-app/node_modules/
+# Built from demo-app/ (npm run build); only served with the "demo" profile.
+src/main/resources/demo-static/

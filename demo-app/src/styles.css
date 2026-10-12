@@ -1,0 +1,219 @@
+:root {
+  --accent: #0f766e;
+  --accent-soft: #ccfbf1;
+  --text: #111827;
+  --muted: #6b7280;
+  --line: #e5e7eb;
+  --bad: #b91c1c;
+  --good: #047857;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  color: var(--text);
+  background: #f3f4f6;
+}
+
+body {
+  margin: 0;
+}
+
+.app {
+  max-width: 440px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+.top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.brand {
+  font-weight: 700;
+  font-size: 20px;
+  color: var(--accent);
+}
+
+.view-as {
+  display: flex;
+  flex-direction: row; /* the label text sits beside the dropdown, not above it */
+  gap: 8px;
+  align-items: center;
+  margin: 0;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.card {
+  background: white;
+  border-radius: 14px;
+  padding: 16px;
+  margin-bottom: 12px;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.06);
+}
+
+h2 {
+  font-size: 16px;
+  margin: 0 0 12px;
+}
+
+.balance .label {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.balance .amount {
+  font-size: 34px;
+  font-weight: 700;
+  margin: 4px 0;
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 14px;
+  color: var(--muted);
+  margin-bottom: 12px;
+}
+
+input,
+select {
+  font: inherit;
+  color: var(--text);
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+}
+
+.view-as select {
+  padding: 6px 8px;
+}
+
+button {
+  font: inherit;
+  font-weight: 600;
+  padding: 10px 16px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--accent);
+  color: white;
+  cursor: pointer;
+}
+
+button.secondary {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.actions button {
+  flex: 1;
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+
+.list li:first-child {
+  border-top: 0;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.small {
+  font-size: 13px;
+}
+
+.in {
+  color: var(--good);
+  white-space: nowrap;
+}
+
+.out {
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.error {
+  color: var(--bad);
+}
+
+.success {
+  color: var(--good);
+  font-weight: 600;
+}
+
+.pill {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--line);
+  color: var(--text);
+}
+
+.pill.authorized {
+  background: #fef3c7;
+}
+
+.pill.captured {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.pill.failed,
+.pill.unknown {
+  background: #fee2e2;
+  color: var(--bad);
+}
+
+.steps {
+  display: flex;
+  list-style: none;
+  padding: 0;
+  margin: 8px 0;
+  gap: 6px;
+}
+
+.steps li {
+  flex: 1;
+  text-align: center;
+  font-size: 13px;
+  padding: 8px 0;
+  border-radius: 8px;
+  background: var(--line);
+  color: var(--muted);
+}
+
+.steps li.reached {
+  background: var(--accent);
+  color: white;
+}
+
+.steps li.stopped {
+  background: #fee2e2;
+  color: var(--bad);
+}

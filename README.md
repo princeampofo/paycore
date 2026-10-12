@@ -28,11 +28,13 @@ docker compose -f deploy/docker-compose.yml --profile full up -d --build
 ## API
 
 ```
-POST /v1/transfers               wallet → wallet
-POST /v1/payments                create + authorize a card payment to a merchant
+POST /v1/transfers               wallet → wallet, with an optional note
+POST /v1/payments                card payment to a merchant; captured straight away unless capture_method is "manual"
 POST /v1/payments/{id}/capture   (also /cancel, /refund)
 GET  /v1/payments/{id}
+GET  /v1/payments                ?merchant_wallet_id= or ?customer=, newest first
 GET  /v1/wallets/{id}/balance
+GET  /v1/wallets/{id}/entries    ledger history, newest first, paged with ?before=
 POST /v1/webhook_endpoints       where to send a merchant's payment events
 ```
 
@@ -40,6 +42,30 @@ Every `POST` requires an `Idempotency-Key` header.
 
 Amounts are integers in minor units (`2500` = 25.00 AED). Errors look like
 `{"type": "invalid_request_error", "code": "insufficient_funds", "message": "..."}`.
+
+## Wallet demo
+
+A small web wallet (`demo-app/`, React + TypeScript) that uses the API the way a customer would.
+Pick who you are from "View as" (Alice, Bob, Fatima, or the Corner Café). You can send money and
+switch to the recipient to see it arrive, pay the café by card and watch the payment go from
+authorizing to paid (straight away, or held until the café captures it, like a hotel), and capture
+or refund as the café and see the webhooks it received.
+
+<p>
+  <img src="docs/wallet.png" width="300" alt="Bob's wallet: a card payment to the Corner Café, authorized and waiting for capture">
+  <img src="docs/merchant.png" width="300" alt="The Corner Café: incoming payment captured, signed webhooks received">
+</p>
+
+```
+(cd demo-app && npm install && npm run build)       # builds into the app's resources
+docker compose -f deploy/docker-compose.yml up -d   # Postgres and mock processor
+./mvnw spring-boot:run -Dspring-boot.run.profiles=demo
+open http://localhost:8080
+```
+
+The wallet, the seeded users and every `/demo/**` endpoint exist **only with the `demo` profile**.
+That's a deliberate safety choice: they expose all users and stand in for a merchant's server, so
+the default profile has none of them (checked by `NoDemoEndpointsByDefaultTest`).
 
 ## Guarantees
 

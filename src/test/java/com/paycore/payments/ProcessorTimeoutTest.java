@@ -87,6 +87,20 @@ class ProcessorTimeoutTest {
     }
 
     @Test
+    void anAutomaticPaymentThatTimedOutIsCapturedOnceItResolves() throws Exception {
+        long cafe = fundedWallet(ledger, "corner-cafe", 0);
+        processor.setTimeoutRate(1.0);
+        long payment = pay(newKey(), cafe, "tok_visa", "automatic", "unknown");
+
+        processor.setTimeoutRate(0);
+        statusChecker.resolveUnknownPayments();
+
+        // The capture method is stored on the payment, so resolving it also captures it.
+        assertThat(paymentService.get(payment).status()).isEqualTo("captured");
+        assertThat(ledger.balance(cafe)).isEqualTo(Money.of(9_710, "AED"));
+    }
+
+    @Test
     void aClientRetryingAfterTheTimeoutGetsTheSameAnswerAndNoNewCharge() throws Exception {
         long cafe = fundedWallet(ledger, "corner-cafe", 0);
         int chargesBefore = processor.approvedCharges();
@@ -117,7 +131,7 @@ class ProcessorTimeoutTest {
     void aChargeTheProcessorNeverReceivedResolvesToFailed() {
         long cafe = fundedWallet(ledger, "corner-cafe", 0);
         // The request was lost on the way: we have a payment and a ref, the processor has nothing.
-        Payment lost = payments.insert(cafe, Money.of(10_000, "AED"), "tok_visa", "pay_" + UUID.randomUUID());
+        Payment lost = payments.insert(cafe, Money.of(10_000, "AED"), "tok_visa", null, CaptureMethod.MANUAL, "pay_" + UUID.randomUUID());
         payments.updateStatus(lost, PaymentStatus.UNKNOWN, lost.fee());
 
         statusChecker.resolveUnknownPayments();
@@ -129,7 +143,7 @@ class ProcessorTimeoutTest {
     void aPaymentLeftCreatedByACrashIsResolvedToo() {
         long cafe = fundedWallet(ledger, "corner-cafe", 0);
         // We saved the payment and the processor charged it, then we died before recording the answer.
-        Payment crashed = payments.insert(cafe, Money.of(10_000, "AED"), "tok_visa", "pay_" + UUID.randomUUID());
+        Payment crashed = payments.insert(cafe, Money.of(10_000, "AED"), "tok_visa", null, CaptureMethod.MANUAL, "pay_" + UUID.randomUUID());
         processorClient.charge(crashed.processorRef(), crashed.amount(), crashed.cardToken());
 
         statusChecker.resolveUnknownPayments();
@@ -139,11 +153,17 @@ class ProcessorTimeoutTest {
     }
 
     private long pay(String key, long merchant, String cardToken, String expectedStatus) throws Exception {
+        return pay(key, merchant, cardToken, "manual", expectedStatus);
+    }
+
+    private long pay(String key, long merchant, String cardToken, String captureMethod, String expectedStatus)
+            throws Exception {
         String body = mvc.perform(post("/v1/payments").contentType(MediaType.APPLICATION_JSON)
                         .header("Idempotency-Key", key)
                         .content("""
-                                {"merchant_wallet_id": %d, "amount": 10000, "currency": "AED", "card_token": "%s"}
-                                """.formatted(merchant, cardToken)))
+                                {"merchant_wallet_id": %d, "amount": 10000, "currency": "AED", "card_token": "%s",
+                                 "capture_method": "%s"}
+                                """.formatted(merchant, cardToken, captureMethod)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.status").value(expectedStatus))
                 .andReturn().getResponse().getContentAsString();

@@ -131,6 +131,15 @@ class WebhookDeliveryTest {
     }
 
     @Test
+    void anAutomaticallyCapturedPaymentSendsAuthorizedThenCaptured() {
+        paymentService.createPayment(new CreatePaymentRequest(cafe, 1_000, "AED", "tok_visa", null, "automatic"));
+
+        assertThat(types()).containsExactly("payment.authorized", "payment.captured");
+        dispatchUntilNothingIsPending();
+        assertThat(receiver.processedEventIds).hasSize(2);
+    }
+
+    @Test
     void aWebhookThatKeepsFailingIsMarkedDeadAfterMaxAttempts() {
         receiver.setMode(Mode.DOWN);
         pay(1_000);
@@ -194,7 +203,7 @@ class WebhookDeliveryTest {
     }
 
     private com.paycore.payments.PaymentResponse pay(long amount) {
-        return paymentService.createPayment(new CreatePaymentRequest(cafe, amount, "AED", "tok_visa"));
+        return paymentService.createPayment(new CreatePaymentRequest(cafe, amount, "AED", "tok_visa", null, "manual"));
     }
 
     private org.springframework.test.web.servlet.ResultActions register(long wallet, String url) throws Exception {

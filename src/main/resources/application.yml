@@ -8,8 +8,8 @@ spring:
   jackson:
     property-naming-strategy: SNAKE_CASE
     deserialization:
-      # A missing "amount" must be an error, not silently 0.
-      fail-on-missing-creator-properties: true
+      # A missing or null "amount" must be an error, not silently 0. Optional fields (note,
+      # customer) are objects, so leaving them out just makes them null.
       fail-on-null-for-primitives: true
 
 paycore:

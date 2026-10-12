@@ -11,8 +11,10 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
 import java.util.function.Supplier;
 
 @RestController
@@ -52,6 +54,16 @@ public class PaymentController {
     public ResponseEntity<String> refund(@RequestHeader("Idempotency-Key") String idempotencyKey,
                                          @PathVariable long id) {
         return action(idempotencyKey, "POST /v1/payments/" + id + "/refund", () -> paymentService.refund(id));
+    }
+
+    public record PaymentList(List<PaymentResponse> data) {
+    }
+
+    @GetMapping("/v1/payments")
+    public PaymentList list(@RequestParam(name = "merchant_wallet_id", required = false) Long merchantWalletId,
+                            @RequestParam(required = false) String customer,
+                            @RequestParam(defaultValue = "20") int limit) {
+        return new PaymentList(paymentService.list(merchantWalletId, customer, limit));
     }
 
     @GetMapping("/v1/payments/{id}")

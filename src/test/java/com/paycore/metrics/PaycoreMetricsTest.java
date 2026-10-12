@@ -159,7 +159,7 @@ class PaycoreMetricsTest {
     }
 
     private long pay(long merchant, long amount) {
-        return paymentService.createPayment(new CreatePaymentRequest(merchant, amount, "AED", "tok_visa")).id();
+        return paymentService.createPayment(new CreatePaymentRequest(merchant, amount, "AED", "tok_visa", null, "manual")).id();
     }
 
     private double count(String name, String... tags) {

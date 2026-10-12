@@ -1,0 +1,16 @@
+# The "demo" profile: seeded users, the wallet demo app, and demo-only endpoints (/demo/**).
+# Run with: ./mvnw spring-boot:run -Dspring-boot.run.profiles=demo
+
+spring:
+  web:
+    resources:
+      # The built demo app (demo-app/ → npm run build). Only served with this profile.
+      static-locations: classpath:/demo-static/
+
+paycore:
+  demo:
+    # The Corner Café's webhooks are delivered back to this app's /demo/webhooks/receive.
+    webhook-url: http://localhost:${server.port:8080}/demo/webhooks/receive
+  status-check:
+    # Resolve timed-out payments quickly, so the demo doesn't sit on "checking with the bank" for long.
+    min-age: 5s
