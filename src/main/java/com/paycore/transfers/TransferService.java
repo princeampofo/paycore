@@ -2,7 +2,6 @@ package com.paycore.transfers;
 
 import com.paycore.api.ApiException;
 import com.paycore.ledger.Account;
-import com.paycore.ledger.AccountType;
 import com.paycore.ledger.JournalEntry;
 import com.paycore.ledger.Ledger;
 import com.paycore.ledger.Money;
@@ -52,11 +51,10 @@ public class TransferService {
         return new TransferResponse(entryId, from.id(), to.id(), amount.amount(), amount.currency());
     }
 
-    // System accounts (holds, fee_revenue, external_funding) share the id space with wallets,
-    // so we check the type: a client must never be able to move money out of them directly.
+    // System accounts (holds, fee_revenue, external_funding) share the id space with wallets.
+    // findWallet skips them: a client must never be able to move their money directly.
     private Account findWallet(long id) {
-        return ledger.findAccount(id)
-                .filter(account -> account.type() == AccountType.WALLET)
+        return ledger.findWallet(id)
                 .orElseThrow(() -> ApiException.notFound("wallet_not_found", "No wallet with id " + id));
     }
 

@@ -8,3 +8,16 @@ services:
     ports:
       # 5433 on the host, so it never clashes with a locally installed Postgres on 5432.
       - "5433:5432"
+
+  # Runs straight from source; it has no dependencies.
+  mock-processor:
+    image: eclipse-temurin:21-jdk
+    volumes:
+      - ../mock-processor/src:/src:ro
+    command: java /src/com/paycore/mockprocessor/MockProcessor.java
+    environment:
+      LATENCY_MS: 200
+      DECLINE_RATE: 0.1
+      TIMEOUT_RATE: 0.05
+    ports:
+      - "8081:8081"

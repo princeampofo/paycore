@@ -1,6 +1,7 @@
 package com.paycore.api;
 
 import com.paycore.ledger.InsufficientFundsException;
+import com.paycore.payments.IllegalTransitionException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -27,6 +28,11 @@ public class ApiExceptionHandler {
     ResponseEntity<ApiError> handle(InsufficientFundsException e) {
         return error(HttpStatus.UNPROCESSABLE_ENTITY, INVALID_REQUEST, "insufficient_funds",
                 "Wallet " + e.accountId() + " has insufficient funds");
+    }
+
+    @ExceptionHandler(IllegalTransitionException.class)
+    ResponseEntity<ApiError> handle(IllegalTransitionException e) {
+        return error(HttpStatus.CONFLICT, INVALID_REQUEST, "invalid_state", e.getMessage());
     }
 
     @ExceptionHandler(HttpMessageNotReadableException.class)

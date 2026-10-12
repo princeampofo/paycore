@@ -1,6 +1,5 @@
 package com.paycore.api;
 
-import com.paycore.ledger.AccountType;
 import com.paycore.ledger.Ledger;
 import com.paycore.ledger.Money;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -21,8 +20,7 @@ public class WalletController {
 
     @GetMapping("/v1/wallets/{id}/balance")
     public BalanceResponse balance(@PathVariable long id) {
-        ledger.findAccount(id)
-                .filter(account -> account.type() == AccountType.WALLET)
+        ledger.findWallet(id)
                 .orElseThrow(() -> ApiException.notFound("wallet_not_found", "No wallet with id " + id));
         Money balance = ledger.balance(id);
         return new BalanceResponse(id, balance.amount(), balance.currency());

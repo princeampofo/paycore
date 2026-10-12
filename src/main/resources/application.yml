@@ -11,3 +11,9 @@ spring:
       # A missing "amount" must be an error, not silently 0.
       fail-on-missing-creator-properties: true
       fail-on-null-for-primitives: true
+
+paycore:
+  processor:
+    base-url: http://localhost:8081
+    # How long we wait for a charge before calling the payment "unknown".
+    timeout: 2s

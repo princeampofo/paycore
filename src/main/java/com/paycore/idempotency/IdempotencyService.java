@@ -3,6 +3,8 @@ package com.paycore.idempotency;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.paycore.api.ApiException;
+import com.paycore.ledger.InsufficientFundsException;
+import com.paycore.payments.IllegalTransitionException;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -13,6 +15,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 /**
@@ -23,7 +26,7 @@ import java.util.function.Supplier;
  * 1. Claim the key: insert it as 'in_progress' and commit straight away, so concurrent
  *    duplicates can see that someone is already working on it (and get a 409).
  * 2. Do the work and save the response as 'completed' in ONE transaction. So a completed key
- *    always means the work happened, and an 'in_progress' key means it didn't (yet).
+ *    always means the work happened.
  */
 @Service
 public class IdempotencyService {
@@ -39,11 +42,23 @@ public class IdempotencyService {
     }
 
     /**
-     * Runs {@code action} at most once per key. Must not be called inside a transaction:
-     * the claim has to commit on its own for concurrent duplicates to see it.
+     * Runs {@code action} at most once per key, in one transaction with saving its response.
+     * Must not be called inside a transaction: the claim has to commit on its own for concurrent
+     * duplicates to see it.
      */
     public SavedResponse execute(String key, String endpoint, Object request, HttpStatus successStatus,
                                  Supplier<?> action) {
+        return execute(key, endpoint, request, successStatus, () -> null, ignored -> action.get());
+    }
+
+    /**
+     * For work that must call another system before writing its result, like charging a card.
+     * {@code outsideTransaction} runs once, after the key is claimed, with no transaction open (it may
+     * commit its own writes). {@code inTransaction} then gets its result and runs in one transaction
+     * with saving the response.
+     */
+    public <T> SavedResponse execute(String key, String endpoint, Object request, HttpStatus successStatus,
+                                     Supplier<T> outsideTransaction, Function<T, ?> inTransaction) {
         if (key.isBlank() || key.length() > 255) {
             throw ApiException.badRequest("invalid_idempotency_key", "Idempotency-Key must be 1 to 255 characters");
         }
@@ -52,17 +67,22 @@ public class IdempotencyService {
             return existingResponse(key, requestHash);
         }
 
+        // Only a refusal frees the key. Any other error (database down, a connection lost during
+        // commit, a bug) leaves it 'in_progress': we can't be sure the work didn't happen, so a retry
+        // gets 409 rather than a second attempt that might move the money twice. It frees itself
+        // when it expires.
         try {
+            T prepared = outsideTransaction.get();
             return transaction.execute(tx -> {
-                SavedResponse response = new SavedResponse(successStatus.value(), toJson(action.get()));
+                SavedResponse response = new SavedResponse(successStatus.value(), toJson(inTransaction.apply(prepared)));
                 jdbc.update("""
                         UPDATE idempotency_keys SET status = 'completed', response_status = ?, response_body = ?
                         WHERE key = ?""", response.status(), response.body(), key);
                 return response;
             });
-        } catch (RuntimeException e) {
-            // The work rolled back, so nothing happened: free the key so the client can retry.
-            // Only successful responses are saved; a failed attempt has no side effects to protect.
+        } catch (ApiException | InsufficientFundsException | IllegalTransitionException e) {
+            // The request was refused and its transaction rolled back, so nothing happened:
+            // free the key so the client can fix the problem and retry.
             jdbc.update("DELETE FROM idempotency_keys WHERE key = ? AND status = 'in_progress'", key);
             throw e;
         }

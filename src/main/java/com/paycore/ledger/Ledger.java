@@ -41,6 +41,11 @@ public class Ledger {
         return jdbc.query("SELECT * FROM accounts WHERE id = ?", ACCOUNT, id).stream().findFirst();
     }
 
+    /** A customer's or merchant's wallet. System accounts are never returned, so callers can't move their money. */
+    public Optional<Account> findWallet(long id) {
+        return findAccount(id).filter(account -> account.type() == AccountType.WALLET);
+    }
+
     /** The single holds / fee_revenue / external_funding account for a currency (created by the migration). */
     public Account systemAccount(AccountType type, String currency) {
         return jdbc.queryForObject("SELECT * FROM accounts WHERE type = ? AND currency = ?",
